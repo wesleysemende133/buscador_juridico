@@ -66,37 +66,88 @@ Democratizar o acesso à legislação, tornando a lei pública, acessível e pes
 
 ## 📂 Estrutura do Projeto
 
-```
+📂 ESTRUTURA DO PROJETO - BUSCADOR JURÍDICO
+
 buscador-juridico/
+│
 ├── cmd/
 │   └── api/
-│       └── main.go                    # Ponto de entrada
+│       └── main.go                    # Ponto de entrada da aplicação
+│
 ├── internal/
 │   ├── domain/                        # Entidades de negócio
-│   │   └── artigo.go
-│   ├── repository/                    # Interfaces de persistência
-│   │   ├── interfaces.go
+│   │   └── artigo.go                  # Estrutura do Artigo
+│   │
+│   ├── repository/                    # Camada de persistência
+│   │   ├── interfaces.go              # Interfaces (Repository, Buscador, Editor)
 │   │   └── json/
 │   │       └── json_repository.go     # Implementação JSON
-│   ├── service/                       # Casos de uso
-│   │   ├── admin_service.go
-│   │   └── busca_service.go
+│   │
+│   ├── service/                       # Casos de uso (lógica de negócio)
+│   │   ├── admin_service.go           # CRUD de artigos
+│   │   └── busca_service.go           # Busca de artigos
+│   │
 │   ├── handler/                       # Controllers HTTP
-│   │   ├── admin_handler.go
-│   │   ├── busca_handler.go
-│   │   └── crawler_handler.go
+│   │   ├── admin_handler.go           # Rotas administrativas
+│   │   ├── busca_handler.go           # Rotas públicas
+│   │   └── crawler_handler.go         # Rota do crawler
+│   │
 │   ├── crawler/                       # Scraping da internet
-│   │   └── crawler.go
+│   │   └── crawler.go                 # Busca automática de leis
+│   │
 │   └── infrastructure/                # Utilitários
-│       └── id_generator.go
+│       └── id_generator.go            # Gerador de IDs únicos
+│
 ├── data/
 │   └── leis.json                      # Base de dados (MVP)
-├── go.mod
-├── go.sum
-└── README.md
-```
+│
+├── go.mod                             # Dependências do módulo
+├── go.sum                             # Checksum das dependências
+└── README.md                          # Documentação do projeto
 
----
+
+📋 DESCRIÇÃO DAS PASTAS
+
+┌─────────────────────────┬────────────────────────────────────────────────┐
+│ Pasta                   │ Descrição                                      │
+├─────────────────────────┼────────────────────────────────────────────────┤
+│ cmd/api/                │ Ponto de entrada da aplicação (main.go)       │
+│ internal/domain/        │ Entidades de negócio (Artigo, Historico)      │
+│ internal/repository/    │ Interfaces e implementações de persistência    │
+│ internal/service/       │ Casos de uso (lógica de negócio)              │
+│ internal/handler/       │ Controllers HTTP (rotas e handlers)            │
+│ internal/crawler/       │ Scraping da internet (busca automática)        │
+│ internal/infrastructure/│ Utilitários (gerador de IDs, timestamps)       │
+│ data/                   │ Arquivos de dados (leis.json)                  │
+└─────────────────────────┴────────────────────────────────────────────────┘
+
+
+📦 ARQUITETURA SOLID APLICADA
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PRINCÍPIO          │ APLICAÇÃO NO PROJETO                                 │
+├────────────────────┼───────────────────────────────────────────────────────┤
+│ S - SRP            │ Cada pacote tem uma responsabilidade única           │
+│ O - OCP            │ Repository é interface → extensível sem modificar   │
+│ L - LSP            │ Qualquer Repository pode substituir outro            │
+│ I - ISP            │ Interfaces separadas: Repository, Buscador, Editor   │
+│ D - DIP            │ Services dependem de interfaces, não de concretos    │
+└────────────────────┴───────────────────────────────────────────────────────┘
+
+
+🔗 ENDPOINTS DA API
+
+PÚBLICOS (sem autenticação):
+  GET  /buscar?q=termo          → Busca artigos por palavra-chave
+  GET  /artigo/{id}             → Detalhe de um artigo específico
+  GET  /leis                    → Lista todas as leis disponíveis
+
+ADMIN (com autenticação - em desenvolvimento):
+  GET  /admin/artigos           → Lista todos os artigos
+  POST /admin/artigo            → Adiciona um novo artigo
+  PUT  /admin/artigo/{id}       → Edita um artigo existente
+  DELETE /admin/artigo/delete/{id} → Exclui um artigo
+  GET  /crawler/buscar          → Executa o crawler (busca na internet)---
 
 ## 📦 Instalação
 
