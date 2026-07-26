@@ -1,0 +1,183 @@
+[
+  {
+    "id": "1",
+    "lei": "Código Civil",
+    "lei_numero": "Lei 10.406/2002",
+    "artigo": "Art. 1.583",
+    "texto": "A guarda será unilateral ou compartilhada. § 1º A guarda unilateral será atribuída a um dos cônjuges ou companheiros. § 2º A guarda compartilhada será exercida por ambos os pais.",
+    "palavras_chave": [
+      "guarda",
+      "filhos",
+      "guarda compartilhada",
+      "guarda unilateral"
+    ],
+    "versao": 0,
+    "data_vigencia": "2003-01-11T00:00:00Z",
+    "data_publicacao": "0001-01-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Planalto",
+    "url": "",
+    "criado_em": "0001-01-01T00:00:00Z",
+    "atualizado_em": "0001-01-01T00:00:00Z",
+    "aprovado_por": ""
+  },
+  {
+    "id": "2",
+    "lei": "Código Civil",
+    "lei_numero": "Lei 10.406/2002",
+    "artigo": "Art. 1.565",
+    "texto": "Pelo casamento, homem e mulher assumem mutuamente a condição de consortes, companheiros e responsáveis pelos encargos da família.",
+    "palavras_chave": [
+      "casamento",
+      "família",
+      "cônjuges"
+    ],
+    "versao": 0,
+    "data_vigencia": "2003-01-11T00:00:00Z",
+    "data_publicacao": "0001-01-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Planalto",
+    "url": "",
+    "criado_em": "0001-01-01T00:00:00Z",
+    "atualizado_em": "0001-01-01T00:00:00Z",
+    "aprovado_por": ""
+  },
+  {
+    "id": "3",
+    "lei": "Código Civil",
+    "lei_numero": "Lei 10.406/2002",
+    "artigo": "Art. 1.694",
+    "texto": "Os alimentos devem ser fixados na proporção das necessidades do reclamante e dos recursos da pessoa obrigada.",
+    "palavras_chave": [
+      "alimentos",
+      "pensão",
+      "pensão alimentícia"
+    ],
+    "versao": 0,
+    "data_vigencia": "2003-01-11T00:00:00Z",
+    "data_publicacao": "0001-01-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Planalto",
+    "url": "",
+    "criado_em": "0001-01-01T00:00:00Z",
+    "atualizado_em": "0001-01-01T00:00:00Z",
+    "aprovado_por": ""
+  },
+  {
+    "id": "4",
+    "lei": "Constituição da República de Moçambique",
+    "lei_numero": "Constituição 2004",
+    "artigo": "Art. 67",
+    "texto": "A família é o elemento fundamental da sociedade e goza da proteção do Estado, que deve criar condições para a realização do seu papel.",
+    "palavras_chave": [
+      "família",
+      "moçambique",
+      "constituição"
+    ],
+    "versao": 0,
+    "data_vigencia": "2004-12-21T00:00:00Z",
+    "data_publicacao": "0001-01-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Legis-PALOP+TL",
+    "url": "",
+    "criado_em": "0001-01-01T00:00:00Z",
+    "atualizado_em": "0001-01-01T00:00:00Z",
+    "aprovado_por": ""
+  },
+  {
+    "id": "art_1785065499167152661",
+    "lei": "Lei de Terras de Moçambique",
+    "lei_numero": "Lei 19/97",
+    "artigo": "Art. 1",
+    "texto": "A terra é propriedade do Estado e não pode ser vendida nem alienada.",
+    "palavras_chave": [
+      "terras",
+      "propriedade",
+      "moçambique",
+      "estado"
+    ],
+    "versao": 1,
+    "data_vigencia": "1997-10-01T00:00:00Z",
+    "data_publicacao": "1997-10-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Legis-PALOP+TL (Exemplo)",
+    "url": "https://www.legis-palop.org/bd/mz/",
+    "criado_em": "2026-07-26T13:31:39.167153545+02:00",
+    "atualizado_em": "2026-07-26T13:31:39.167153545+02:00",
+    "aprovado_por": "Crawler"
+  },
+  {
+    "id": "art_1785065499167830826",
+    "lei": "Código do Trabalho de Moçambique",
+    "lei_numero": "Lei 23/2007",
+    "artigo": "Art. 1",
+    "texto": "O presente Código estabelece o regime jurídico das relações de trabalho em Moçambique.",
+    "palavras_chave": [
+      "trabalho",
+      "emprego",
+      "moçambique",
+      "relações trabalhistas"
+    ],
+    "versao": 1,
+    "data_vigencia": "2007-08-01T00:00:00Z",
+    "data_publicacao": "2007-08-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Legis-PALOP+TL (Exemplo)",
+    "url": "https://www.legis-palop.org/bd/mz/",
+    "criado_em": "2026-07-26T13:31:39.167833434+02:00",
+    "atualizado_em": "2026-07-26T13:31:39.167833434+02:00",
+    "aprovado_por": "Crawler"
+  },
+  {
+    "id": "art_1785065520682789779",
+    "lei": "Lei de Terras de Moçambique",
+    "lei_numero": "Lei 19/97",
+    "artigo": "Art. 1",
+    "texto": "A terra é propriedade do Estado e não pode ser vendida nem alienada.",
+    "palavras_chave": [
+      "terras",
+      "propriedade",
+      "moçambique",
+      "estado"
+    ],
+    "versao": 1,
+    "data_vigencia": "1997-10-01T00:00:00Z",
+    "data_publicacao": "1997-10-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Legis-PALOP+TL (Exemplo)",
+    "url": "https://www.legis-palop.org/bd/mz/",
+    "criado_em": "2026-07-26T13:32:00.68279065+02:00",
+    "atualizado_em": "2026-07-26T13:32:00.68279065+02:00",
+    "aprovado_por": "Crawler"
+  },
+  {
+    "id": "art_1785065520683239446",
+    "lei": "Código do Trabalho de Moçambique",
+    "lei_numero": "Lei 23/2007",
+    "artigo": "Art. 1",
+    "texto": "O presente Código estabelece o regime jurídico das relações de trabalho em Moçambique.",
+    "palavras_chave": [
+      "trabalho",
+      "emprego",
+      "moçambique",
+      "relações trabalhistas"
+    ],
+    "versao": 1,
+    "data_vigencia": "2007-08-01T00:00:00Z",
+    "data_publicacao": "2007-08-01T00:00:00Z",
+    "status": "Vigente",
+    "status_motivo": "",
+    "fonte": "Legis-PALOP+TL (Exemplo)",
+    "url": "https://www.legis-palop.org/bd/mz/",
+    "criado_em": "2026-07-26T13:32:00.683241022+02:00",
+    "atualizado_em": "2026-07-26T13:32:00.683241022+02:00",
+    "aprovado_por": "Crawler"
+  }
+]
