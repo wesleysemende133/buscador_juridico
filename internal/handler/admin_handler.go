@@ -100,3 +100,20 @@ func (h *AdminHandler) ExcluirArtigoHandler(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"mensagem": "Artigo excluído com sucesso!"})
 }
+
+// EstatisticasDedupHandler - GET /admin/dedup/stats
+func (h *AdminHandler) EstatisticasDedupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idsCount, hashesCount := h.adminService.EstatisticasDedup()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ids_indexados":    idsCount,
+		"hashes_indexados": hashesCount,
+		"descricao":        "Índice de deduplicação ativo",
+	})
+}
