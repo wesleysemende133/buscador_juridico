@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/wesleysemende133/buscador-juridico/internal/domain"
 	"github.com/wesleysemende133/buscador-juridico/internal/service"
 )
 
@@ -17,8 +18,12 @@ func NewBuscaHandler(buscaService *service.BuscaService) *BuscaHandler {
 }
 
 func (h *BuscaHandler) BuscarHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -28,25 +33,32 @@ func (h *BuscaHandler) BuscarHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limite := 10
+	limite := 20
 	if l := r.URL.Query().Get("limite"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
 			limite = v
 		}
 	}
 
-	resultados, err := h.buscaService.Buscar(query, limite)
+	categoria := r.URL.Query().Get("categoria")
+
+	resultados, err := h.buscaService.BuscarInteligente(query, categoria, limite)
 	if err != nil {
 		http.Error(w, "Erro ao buscar: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// CORREÇÃO: Usar o tipo correto
+	if resultados == nil {
+		resultados = []domain.Artigo{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(resultados)
 }
 
 func (h *BuscaHandler) ArtigoHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
@@ -69,11 +81,11 @@ func (h *BuscaHandler) ArtigoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(artigo)
 }
 
 func (h *BuscaHandler) LeisHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
@@ -86,6 +98,5 @@ func (h *BuscaHandler) LeisHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(map[string]interface{}{"leis": leis})
 }

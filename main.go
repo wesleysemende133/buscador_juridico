@@ -8,12 +8,13 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/wesleysemende133/buscador-juridico/internal/auth"
 	"github.com/wesleysemende133/buscador-juridico/internal/crawler"
 	"github.com/wesleysemende133/buscador-juridico/internal/handler"
 	"github.com/wesleysemende133/buscador-juridico/internal/infrastructure"
+	"github.com/wesleysemende133/buscador-juridico/internal/repository"
 	jsonrepo "github.com/wesleysemende133/buscador-juridico/internal/repository/json"
 	"github.com/wesleysemende133/buscador-juridico/internal/repository/postgres"
-	"github.com/wesleysemende133/buscador-juridico/internal/repository"
 	"github.com/wesleysemende133/buscador-juridico/internal/service"
 )
 
@@ -76,6 +77,18 @@ func main() {
 		repo, buscador, editor = jRepo, jRepo, jRepo
 	}
 
+	// ============================================
+	// AUTH (reutiliza DB do repositório Postgres)
+	// ============================================
+	var authHandler *handler.AuthHandler
+
+	if pgRepo, ok := repo.(*postgres.PostgresRepository); ok {
+		authHandler = handler.NewAuthHandler(pgRepo.DB())
+		log.Println("🔐 Auth JWT ativa")
+	} else {
+		log.Println("⚠️  Auth JWT desativada (só funciona com PostgreSQL)")
+	}
+
 	// ===== SERVIÇOS =====
 	idGen := infrastructure.TimestampIDGenerator{}
 	adminService := service.NewAdminService(repo, buscador, editor, idGen)
@@ -89,30 +102,55 @@ func main() {
 	limpezaHandler := handler.NewLimpezaHandler(limpezaService)
 	categoriasHandler := handler.NewCategoriasHandler(buscaService)
 
-	// ===== ROTAS =====
+	// ===== ROTAS PÚBLICAS =====
 	http.HandleFunc("/buscar", corsMiddleware(buscaHandler.BuscarHandler))
 	http.HandleFunc("/artigo/", corsMiddleware(buscaHandler.ArtigoHandler))
 	http.HandleFunc("/leis", corsMiddleware(buscaHandler.LeisHandler))
 	http.HandleFunc("/categorias", corsMiddleware(categoriasHandler.ListarCategoriasHandler))
 
-	http.HandleFunc("/admin/artigo", corsMiddleware(adminHandler.AdicionarArtigoHandler))
-	http.HandleFunc("/admin/artigo/", corsMiddleware(adminHandler.EditarArtigoHandler))
-	http.HandleFunc("/admin/artigos", corsMiddleware(adminHandler.ListarArtigosHandler))
-	http.HandleFunc("/admin/artigo/delete/", corsMiddleware(adminHandler.ExcluirArtigoHandler))
+	// ===== AUTH (públicas) =====
+	if authHandler != nil {
+		http.HandleFunc("/login", corsMiddleware(authHandler.LoginHandler))
+		http.HandleFunc("/registar", corsMiddleware(authHandler.RegistarHandler))
+		log.Println("🔐 Rotas /login e /registar ativas")
+	}
 
-	http.HandleFunc("/admin/duplicados", corsMiddleware(limpezaHandler.VerificarDuplicadosHandler))
-	http.HandleFunc("/admin/limpar", corsMiddleware(limpezaHandler.LimparDuplicadosHandler))
-	http.HandleFunc("/crawler/buscar", corsMiddleware(crawlerHandler.BuscarLeisHandler))
+	// ===== ROTAS PROTEGIDAS (JWT + admin) =====
+	protegido := func(h http.HandlerFunc) http.HandlerFunc {
+		if authHandler == nil {
+			return corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(`{"erro":"autenticação não configurada"}`))
+			})
+		}
+		return corsMiddleware(auth.MiddlewareJWT(auth.MiddlewareAdmin(h)))
+	}
 
+	http.HandleFunc("/admin/artigo", protegido(adminHandler.AdicionarArtigoHandler))
+	http.HandleFunc("/admin/artigo/", protegido(adminHandler.EditarArtigoHandler))
+	http.HandleFunc("/admin/artigos", protegido(adminHandler.ListarArtigosHandler))
+	http.HandleFunc("/admin/artigo/delete/", protegido(adminHandler.ExcluirArtigoHandler))
+	http.HandleFunc("/admin/duplicados", protegido(limpezaHandler.VerificarDuplicadosHandler))
+	http.HandleFunc("/admin/limpar", protegido(limpezaHandler.LimparDuplicadosHandler))
+	http.HandleFunc("/crawler/buscar", protegido(crawlerHandler.BuscarLeisHandler))
+
+	// ===== RAIZ =====
 	http.HandleFunc("/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		db := "JSON"
 		if dbURL != "" && !useJSON {
 			db = "PostgreSQL"
 		}
+		authStatus := "desativada"
+		if authHandler != nil {
+			authStatus = "JWT ativo"
+		}
 		w.Write([]byte(`{
-			"mensagem": "Buscador Jurídico API - Moçambique",
-			"database": "` + db + `"
+			"mensagem": "Base Legal API - Moçambique",
+			"versao": "2.0",
+			"database": "` + db + `",
+			"auth": "` + authStatus + `"
 		}`))
 	}))
 

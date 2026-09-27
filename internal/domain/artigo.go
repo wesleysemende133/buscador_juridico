@@ -9,6 +9,8 @@ type Artigo struct {
 	Artigo         string    `json:"artigo"`
 	Texto          string    `json:"texto"`
 	PalavrasChave  []string  `json:"palavras_chave"`
+	Categoria      string    `json:"categoria"`      
+	Subcategoria   string    `json:"subcategoria"`   
 	Versao         int       `json:"versao"`
 	DataVigencia   time.Time `json:"data_vigencia"`
 	DataPublicacao time.Time `json:"data_publicacao"`

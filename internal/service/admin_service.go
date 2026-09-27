@@ -12,12 +12,13 @@ import (
 )
 
 type AdminService struct {
-	repo       repository.Repository
-	buscador   repository.Buscador
-	editor     repository.Editor
-	idGen      infrastructure.IDGenerator
-	dedup      *DedupService
-	muSalvar   sync.Mutex
+	repo          repository.Repository
+	buscador      repository.Buscador
+	editor        repository.Editor
+	idGen         infrastructure.IDGenerator
+	dedup         *DedupService
+	categorizacao *CategorizacaoService
+	muSalvar      sync.Mutex
 }
 
 func NewAdminService(
@@ -27,14 +28,14 @@ func NewAdminService(
 	idGen infrastructure.IDGenerator,
 ) *AdminService {
 	s := &AdminService{
-		repo:     repo,
-		buscador: buscador,
-		editor:   editor,
-		idGen:    idGen,
-		dedup:    NewDedupService(),
+		repo:          repo,
+		buscador:      buscador,
+		editor:        editor,
+		idGen:         idGen,
+		dedup:         NewDedupService(),
+		categorizacao: NewCategorizacaoService(),
 	}
 
-	// Carregar artigos existentes no índice de dedup
 	if artigos, err := buscador.ListarTodos(); err == nil {
 		s.dedup.CarregarExistentes(artigos)
 	}
@@ -43,7 +44,7 @@ func NewAdminService(
 }
 
 // ============================================
-// ADICIONAR VÁRIOS ARTIGOS (COM DEDUPLICAÇÃO)
+// ADICIONAR VÁRIOS (COM DEDUP + CATEGORIZAÇÃO)
 // ============================================
 
 func (s *AdminService) AdicionarVarios(artigos []domain.Artigo) (int, error) {
@@ -51,44 +52,43 @@ func (s *AdminService) AdicionarVarios(artigos []domain.Artigo) (int, error) {
 		return 0, nil
 	}
 
-	// Lock para evitar race conditions entre workers
 	s.muSalvar.Lock()
 	defer s.muSalvar.Unlock()
 
 	log.Printf("📥 Recebidos %d artigos para processar", len(artigos))
 
-	// ============================================
 	// PASSO 1: DEDUPLICAÇÃO
-	// ============================================
 	unicos, duplicados := s.dedup.RemoverDuplicados(artigos)
 
 	if duplicados > 0 {
-		log.Printf("🔍 Dedup: %d artigos únicos, %d duplicados removidos", 
-			len(unicos), duplicados)
+		log.Printf("🔍 Dedup: %d únicos, %d duplicados removidos", len(unicos), duplicados)
 	}
 
 	if len(unicos) == 0 {
-		log.Println("📊 Nenhum artigo novo para adicionar")
+		log.Println("📊 Nenhum artigo novo")
 		return 0, nil
 	}
 
-	// ============================================
-	// PASSO 2: CARREGAR EXISTENTES DO FICHEIRO
-	// ============================================
+	// PASSO 2: CATEGORIZAÇÃO
+	for i := range unicos {
+		// Normalizar nome da lei
+		unicos[i].Lei = s.categorizacao.NormalizarNomeLei(unicos[i].Lei, unicos[i].LeiNumero)
+		// Categorizar
+		s.categorizacao.Categorizar(&unicos[i])
+	}
+
+	// PASSO 3: CARREGAR EXISTENTES
 	existentes, err := s.buscador.ListarTodos()
 	if err != nil {
 		return 0, fmt.Errorf("erro ao carregar existentes: %v", err)
 	}
 
-	// ============================================
-	// PASSO 3: VALIDAR E ADICIONAR
-	// ============================================
+	// PASSO 4: VALIDAR E ADICIONAR
 	adicionados := 0
 	invalidos := 0
 	now := time.Now()
 
 	for _, artigo := range unicos {
-		// Preencher metadados
 		if artigo.Versao == 0 {
 			artigo.Versao = 1
 		}
@@ -102,7 +102,6 @@ func (s *AdminService) AdicionarVarios(artigos []domain.Artigo) (int, error) {
 			artigo.Status = "Vigente"
 		}
 
-		// Validar
 		if err := s.validarArtigo(artigo); err != nil {
 			invalidos++
 			continue
@@ -115,15 +114,12 @@ func (s *AdminService) AdicionarVarios(artigos []domain.Artigo) (int, error) {
 	log.Printf("📊 Adicionados: %d | Duplicados: %d | Inválidos: %d",
 		adicionados, duplicados, invalidos)
 
-	// ============================================
-	// PASSO 4: SALVAR
-	// ============================================
+	// PASSO 5: SALVAR
 	if adicionados > 0 {
 		if err := s.repo.Salvar(existentes); err != nil {
 			return 0, fmt.Errorf("erro ao salvar: %v", err)
 		}
 
-		// Atualizar índice de dedup com os novos
 		for _, a := range unicos {
 			s.dedup.Adicionar(a)
 		}
@@ -135,7 +131,7 @@ func (s *AdminService) AdicionarVarios(artigos []domain.Artigo) (int, error) {
 }
 
 // ============================================
-// DEMAIS FUNÇÕES (mantém igual)
+// DEMAIS FUNÇÕES
 // ============================================
 
 func (s *AdminService) AdicionarArtigo(artigo domain.Artigo) error {
@@ -157,11 +153,14 @@ func (s *AdminService) AdicionarArtigo(artigo domain.Artigo) error {
 		artigo.Status = "Vigente"
 	}
 
+	// Normalizar + Categorizar
+	artigo.Lei = s.categorizacao.NormalizarNomeLei(artigo.Lei, artigo.LeiNumero)
+	s.categorizacao.Categorizar(&artigo)
+
 	if err := s.validarArtigo(artigo); err != nil {
 		return err
 	}
 
-	// Verificar duplicado
 	if duplicado, motivo := s.dedup.IsDuplicado(artigo); duplicado {
 		return fmt.Errorf("artigo duplicado: %s", motivo)
 	}
@@ -186,6 +185,9 @@ func (s *AdminService) EditarArtigo(id string, artigo domain.Artigo) error {
 	artigo.CriadoEm = existente.CriadoEm
 	artigo.Versao = existente.Versao + 1
 	artigo.AtualizadoEm = time.Now()
+
+	// Categorizar
+	s.categorizacao.Categorizar(&artigo)
 
 	if err := s.validarArtigo(artigo); err != nil {
 		return err
@@ -236,10 +238,6 @@ func (s *AdminService) validarArtigo(artigo domain.Artigo) error {
 	}
 	return nil
 }
-
-// ============================================
-// ESTATÍSTICAS DE DEDUP
-// ============================================
 
 func (s *AdminService) EstatisticasDedup() (int, int) {
 	return s.dedup.Estatisticas()
