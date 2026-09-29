@@ -1,81 +1,71 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
-	"sync"
+	"os"
+	"strings"
 	"time"
 
-	"golang.org/x/time/rate"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
 )
 
-type cliente struct {
-	limiter *rate.Limiter
-	ultimo  time.Time
-}
-
 type RateLimiter struct {
-	mu       sync.Mutex
-	clientes map[string]*cliente
-	rpm      int
-	burst    int
-	janela   time.Duration
+	limiter *redis_rate.Limiter
+	rate    redis_rate.Limit
+	nome    string
 }
 
-func NovoRateLimiter(rpm int, burst int) *RateLimiter {
-	rl := &RateLimiter{
-		clientes: make(map[string]*cliente),
-		rpm:      rpm,
-		burst:    burst,
-		janela:   10 * time.Minute,
+func NovoRateLimiter(redisClient *redis.Client, nome string, rpm int, burst int) *RateLimiter {
+	limiter := redis_rate.NewLimiter(redisClient)
+
+	return &RateLimiter{
+		limiter: limiter,
+		nome:    nome,
+		rate: redis_rate.Limit{
+			Rate:   rpm,
+			Burst:  burst,
+			Period: time.Minute,
+		},
 	}
-	go rl.limparInativos()
-	return rl
 }
 
 func (rl *RateLimiter) Middleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := obterIP(r)
+		chave := rl.nome + ":" + ip
 
-		rl.mu.Lock()
-		c, existe := rl.clientes[ip]
-		if !existe {
-			c = &cliente{
-				limiter: rate.NewLimiter(rate.Limit(float64(rl.rpm)/60.0), rl.burst),
-				ultimo:  time.Now(),
-			}
-			rl.clientes[ip] = c
+		res, err := rl.limiter.Allow(r.Context(), chave, rl.rate)
+		if err != nil {
+			log.Printf("⚠️  Rate limiter (Redis) falhou: %v", err)
+			next(w, r)
+			return
 		}
-		c.ultimo = time.Now()
-		rl.mu.Unlock()
 
-		if !c.limiter.Allow() {
+		if res.Allowed == 0 {
+			retryAfter := int(res.RetryAfter.Seconds())
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+
 			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Retry-After", "60")
+			w.Header().Set("Retry-After", itoa(retryAfter))
+			w.Header().Set("X-RateLimit-Remaining", "0")
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(map[string]string{
-				"erro": "demasiadas tentativas. Tenta novamente em 1 minuto.",
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"erro":        "demasiadas tentativas",
+				"retry_after": retryAfter,
+				"mensagem":    "Tenta novamente em " + itoa(retryAfter) + " segundos",
 			})
 			return
 		}
 
+		w.Header().Set("X-RateLimit-Remaining", itoa(res.Remaining))
 		next(w, r)
-	}
-}
-
-func (rl *RateLimiter) limparInativos() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		rl.mu.Lock()
-		for ip, c := range rl.clientes {
-			if time.Since(c.ultimo) > rl.janela {
-				delete(rl.clientes, ip)
-			}
-		}
-		rl.mu.Unlock()
 	}
 }
 
@@ -83,10 +73,10 @@ func obterIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		for i := 0; i < len(xff); i++ {
 			if xff[i] == ',' {
-				return xff[:i]
+				return strings.TrimSpace(xff[:i])
 			}
 		}
-		return xff
+		return strings.TrimSpace(xff)
 	}
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
@@ -98,8 +88,47 @@ func obterIP(r *http.Request) string {
 	return ip
 }
 
-func (rl *RateLimiter) Stats() int {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	return len(rl.clientes)
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
+
+func NovoClienteRedis() (*redis.Client, error) {
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379/0"
+	}
+
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, err
+	}
+
+	client := redis.NewClient(opt)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
