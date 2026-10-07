@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
+	"github.com/wesleysemende133/buscador-juridico/internal/auth"
 	"github.com/wesleysemende133/buscador-juridico/internal/service"
 )
 
@@ -19,7 +21,9 @@ func NewPlanosHandler(limites *service.LimitesService, validador *service.AuthVa
 	}
 }
 
-// GET /planos - Lista os planos disponíveis
+// ============================================
+// GET /planos — Público
+// ============================================
 func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Request) {
 	planos := []map[string]interface{}{
 		{
@@ -30,15 +34,10 @@ func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Reque
 			"periodo":     "para sempre",
 			"descricao":   "Para começar a explorar",
 			"features": []string{
+				"20 perguntas/dia ao Assistente IA (Modo Cidadão)",
 				"3 perguntas ao Assistente IA Profissional",
 				"Pesquisa ilimitada na legislação",
-				"Acesso ao Modo Cidadão (ilimitado)",
 				"Leitura de todos os artigos",
-			},
-			"limitacoes": []string{
-				"Sem histórico de conversas",
-				"Sem exportação PDF",
-				"Sem acesso prioritário a advogados",
 			},
 			"destaque": false,
 		},
@@ -51,16 +50,10 @@ func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Reque
 			"descricao":   "Para estudantes de Direito",
 			"features": []string{
 				"15 perguntas/mês ao Assistente IA Profissional",
-				"Pesquisa ilimitada na legislação",
-				"Acesso ao Modo Cidadão (ilimitado)",
 				"Histórico de pesquisas",
 				"Suporte por email",
 			},
-			"limitacoes": []string{
-				"Sem exportação PDF",
-			},
 			"destaque": false,
-			"requer_verificacao": true,
 		},
 		{
 			"id":          "profissional",
@@ -71,15 +64,11 @@ func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Reque
 			"descricao":   "Para advogados e juristas",
 			"features": []string{
 				"Perguntas ILIMITADAS ao Assistente IA Profissional",
-				"Pesquisa ilimitada na legislação",
-				"Acesso ao Modo Cidadão (ilimitado)",
-				"Acesso prioritário a advogados parceiros",
+				"Acesso prioritário a advogados",
 				"Exportação de conversas (PDF)",
-				"Análises técnicas aprofundadas",
 				"Suporte prioritário",
 			},
-			"limitacoes": []string{},
-			"destaque":   true,
+			"destaque": true,
 		},
 		{
 			"id":          "empresarial",
@@ -92,13 +81,9 @@ func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Reque
 				"Tudo do plano Profissional",
 				"Até 10 utilizadores",
 				"Painel de administração",
-				"Relatórios de uso",
 				"Gestor de conta dedicado",
-				"Formação da equipa",
-				"API de integração",
 			},
-			"limitacoes": []string{},
-			"destaque":   false,
+			"destaque": false,
 		},
 	}
 
@@ -108,21 +93,16 @@ func (h *PlanosHandler) ListarPlanosHandler(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// GET /planos/uso?email=...
+// ============================================
+// GET /planos/uso — Requer JWT
+// Só o próprio utilizador pode ver o seu uso
+// ============================================
 func (h *PlanosHandler) UsoHandler(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-
-	if email == "" {
-		respErro(w, http.StatusUnauthorized, "precisas de criar conta")
+	// Email do JWT (não do query string)
+	email, ok := r.Context().Value(auth.EmailKey).(string)
+	if !ok || email == "" {
+		respErro(w, http.StatusUnauthorized, "sessão inválida")
 		return
-	}
-
-	if h.validador != nil {
-		existe, err := h.validador.UtilizadorExiste(email)
-		if err != nil || !existe {
-			respErro(w, http.StatusUnauthorized, "utilizador não encontrado")
-			return
-		}
 	}
 
 	uso, err := h.limites.ObterUso(email)
@@ -134,15 +114,80 @@ func (h *PlanosHandler) UsoHandler(w http.ResponseWriter, r *http.Request) {
 	respJSON(w, http.StatusOK, uso)
 }
 
-// POST /planos/actualizar
+// ============================================
+// GET /planos/uso-cidadao — Requer JWT
+// ============================================
+func (h *PlanosHandler) UsoCidadaoHandler(w http.ResponseWriter, r *http.Request) {
+	email, ok := r.Context().Value(auth.EmailKey).(string)
+	if !ok || email == "" {
+		respErro(w, http.StatusUnauthorized, "sessão inválida")
+		return
+	}
+
+	uso, err := h.limites.ObterUsoCidadao(email)
+	if err != nil {
+		respErro(w, http.StatusInternalServerError, "erro ao obter uso")
+		return
+	}
+
+	respJSON(w, http.StatusOK, uso)
+}
+
+// ============================================
+// POST /planos/actualizar — Requer JWT
+//
+// ⚠️  ATENÇÃO: este endpoint só funciona em desenvolvimento.
+// Em produção, o plano é alterado via webhook do gateway de pagamento.
+// ============================================
 func (h *PlanosHandler) ActualizarHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// ============================================
+	// 1. BLOQUEIO EM PRODUÇÃO
+	// ============================================
+	ambiente := os.Getenv("AMBIENTE")
+	if ambiente == "" {
+		ambiente = "development"
+	}
+
+	if ambiente == "production" {
+		respErro(w, http.StatusForbidden,
+			"a alteração de planos em produção só pode ser feita via pagamento confirmado. "+
+				"Contacta o suporte para mais informações.")
+		return
+	}
+
+	// ============================================
+	// 2. EXIGIR JWT
+	// ============================================
+	emailToken, ok := r.Context().Value(auth.EmailKey).(string)
+	if !ok || emailToken == "" {
+		respErro(w, http.StatusUnauthorized, "sessão inválida. Faz login novamente.")
+		return
+	}
+
+	// ============================================
+	// 3. VALIDAR QUE O UTILIZADOR EXISTE
+	// ============================================
+	if h.validador != nil {
+		existe, err := h.validador.UtilizadorExiste(emailToken)
+		if err != nil {
+			respErro(w, http.StatusInternalServerError, "erro a validar utilizador")
+			return
+		}
+		if !existe {
+			respErro(w, http.StatusUnauthorized, "utilizador não encontrado")
+			return
+		}
+	}
+
+	// ============================================
+	// 4. LER BODY (SEM email — vem do token)
+	// ============================================
 	var req struct {
-		Email string `json:"email"`
 		Plano string `json:"plano"`
 	}
 
@@ -151,25 +196,18 @@ func (h *PlanosHandler) ActualizarHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Email == "" {
-		respErro(w, http.StatusUnauthorized, "precisas de criar conta antes de comprar um plano")
-		return
-	}
-
-	if h.validador != nil {
-		existe, err := h.validador.UtilizadorExiste(req.Email)
-		if err != nil || !existe {
-			respErro(w, http.StatusUnauthorized, "utilizador não encontrado")
-			return
-		}
-	}
-
+	// ============================================
+	// 5. VALIDAR PLANO
+	// ============================================
 	if err := service.ValidarPlano(req.Plano); err != nil {
 		respErro(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := h.limites.ActualizarPlano(req.Email, req.Plano); err != nil {
+	// ============================================
+	// 6. ACTUALIZAR (usa email do TOKEN)
+	// ============================================
+	if err := h.limites.ActualizarPlano(emailToken, req.Plano); err != nil {
 		respErro(w, http.StatusInternalServerError, "erro ao actualizar plano")
 		return
 	}
@@ -177,5 +215,6 @@ func (h *PlanosHandler) ActualizarHandler(w http.ResponseWriter, r *http.Request
 	respJSON(w, http.StatusOK, map[string]string{
 		"mensagem": "Plano actualizado com sucesso",
 		"plano":    req.Plano,
+		"aviso":    "Endpoint de desenvolvimento — em produção será via pagamento",
 	})
 }

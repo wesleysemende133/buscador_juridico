@@ -3,11 +3,12 @@ package crawler
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"               
+	"io"
 	"log"
-	"net/http"          
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -21,10 +22,8 @@ import (
 var geminiExtractor *GeminiExtractor
 var regexExtractor *RegexExtractor
 
-// Número de workers paralelos
-const NUM_WORKERS = 3  
+const NUM_WORKERS = 5
 
-// Contador global
 var totalPersistidos int
 var muPersistidos sync.Mutex
 
@@ -54,7 +53,7 @@ func GetTotalPersistidos() int {
 }
 
 // ============================================
-// BUSCAR LEIS COM WORKERS PARALELOS
+// BUSCAR LEIS
 // ============================================
 
 func BuscarLeisPlanalto(ctx context.Context, persistir func([]domain.Artigo) (int, error)) ([]domain.Artigo, error) {
@@ -62,24 +61,15 @@ func BuscarLeisPlanalto(ctx context.Context, persistir func([]domain.Artigo) (in
 		InitRegexExtractor()
 	}
 
-	// Resetar contador
 	muPersistidos.Lock()
 	totalPersistidos = 0
 	muPersistidos.Unlock()
 
 	log.Printf("🕷️  Iniciando crawler com %d workers paralelos...", NUM_WORKERS)
 
-	// ============================================
-	// CANAL DE URLS (PDFs a processar)
-	// ============================================
 	urlsChan := make(chan string, 100)
-	
-	// Canal para contar artigos extraídos por worker
 	resultadosChan := make(chan int, 1000)
 
-	// ============================================
-	// INICIAR WORKERS
-	// ============================================
 	var wg sync.WaitGroup
 	ctxWorkers, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
@@ -92,23 +82,16 @@ func BuscarLeisPlanalto(ctx context.Context, persistir func([]domain.Artigo) (in
 		}(i)
 	}
 
-	// ============================================
-	// INICIAR COLETOR DE LINKS
-	// ============================================
 	go func() {
 		defer close(urlsChan)
 		coletarLinks(ctx, urlsChan)
 	}()
 
-	// ============================================
-	// AGUARDAR TODOS OS WORKERS
-	// ============================================
 	go func() {
 		wg.Wait()
 		close(resultadosChan)
 	}()
 
-	// Contar total
 	total := 0
 	for count := range resultadosChan {
 		total += count
@@ -119,7 +102,7 @@ func BuscarLeisPlanalto(ctx context.Context, persistir func([]domain.Artigo) (in
 }
 
 // ============================================
-// WORKER (processa PDFs do canal)
+// WORKER
 // ============================================
 
 func worker(
@@ -142,7 +125,6 @@ func worker(
 				return
 			}
 
-			// Processa o PDF
 			artigos, err := processarPDF(ctx, url, workerID)
 			if err != nil {
 				log.Printf("⚠️ Worker %d erro em %s: %v", workerID, url, err)
@@ -155,7 +137,6 @@ func worker(
 				continue
 			}
 
-			// Persistir imediatamente
 			adicionados, err := persistir(artigos)
 			if err != nil {
 				log.Printf("⚠️ Worker %d erro ao persistir: %v", workerID, err)
@@ -176,7 +157,7 @@ func worker(
 }
 
 // ============================================
-// PROCESSAR PDF INDIVIDUAL
+// PROCESSAR PDF
 // ============================================
 
 func processarPDF(ctx context.Context, url string, workerID int) ([]domain.Artigo, error) {
@@ -204,7 +185,7 @@ func processarPDF(ctx context.Context, url string, workerID int) ([]domain.Artig
 
 	log.Printf("   📝 Worker %d: %d chars extraídos", workerID, len(texto))
 
-	artigos, err := regexExtractor.ExtrairArtigos(texto, "Tribunal Supremo")
+	artigos, err := regexExtractor.ExtrairArtigos(texto, "Fonte Externa")
 	if err != nil {
 		log.Printf("   ❌ Worker %d: erro no regex: %v", workerID, err)
 		return nil, fmt.Errorf("erro no regex: %v", err)
@@ -215,7 +196,7 @@ func processarPDF(ctx context.Context, url string, workerID int) ([]domain.Artig
 }
 
 // ============================================
-// CLIENTE HTTP SIMPLES
+// HTTP CLIENT — com TLS flexível
 // ============================================
 
 type httpClient struct {
@@ -223,18 +204,30 @@ type httpClient struct {
 }
 
 func (c *httpClient) baixar(url string) ([]byte, error) {
-	client := &http.Client{Timeout: c.timeout}
+	// ⚠️ InsecureSkipVerify: true permite sites com certificados SSL inválidos
+	// (como a Imprensa Nacional de Moçambique)
+	// Em produção, o ideal é configurar o CA bundle correcto
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
+	client := &http.Client{
+		Timeout:   c.timeout,
+		Transport: transport,
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	// Headers realistas (evita bloqueio de bots)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/pdf,*/*")
-	req.Header.Set("Accept-Language", "pt-PT,pt;q=0.9")
-
-	// 🆕 Referer ajuda a passar por alguns bloqueios
-	req.Header.Set("Referer", "https://www.ts.gov.mz/legislacao/")
+	req.Header.Set("Accept-Language", "pt-PT,pt;q=0.9,en;q=0.8")
+	req.Header.Set("Referer", "https://www.google.com/")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -242,7 +235,6 @@ func (c *httpClient) baixar(url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	// 🆕 Verificar status HTTP
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d (%s)", resp.StatusCode, resp.Status)
 	}
@@ -252,16 +244,21 @@ func (c *httpClient) baixar(url string) ([]byte, error) {
 		return nil, err
 	}
 
-	// 🆕 Verificar se é realmente PDF (magic bytes "%PDF")
+	// Verificar se é PDF (magic bytes %PDF)
 	if len(dados) < 5 || !bytes.HasPrefix(dados, []byte("%PDF")) {
-		return nil, fmt.Errorf("não é PDF (tamanho: %d bytes)", len(dados))
+		if bytes.Contains(dados, []byte("Cloudflare")) ||
+			bytes.Contains(dados, []byte("Human verification")) ||
+			bytes.Contains(dados, []byte("cf-browser-verification")) {
+			return nil, fmt.Errorf("bloqueado por Cloudflare")
+		}
+		return nil, fmt.Errorf("não é PDF (%d bytes)", len(dados))
 	}
 
 	return dados, nil
 }
 
 // ============================================
-// COLETOR DE LINKS (SEQUENCIAL)
+// COLETOR DE LINKS
 // ============================================
 
 func coletarLinks(ctx context.Context, urlsChan chan<- string) {
@@ -292,57 +289,40 @@ func coletarLinks(ctx context.Context, urlsChan chan<- string) {
 		collector.SetRequestTimeout(45 * time.Second)
 		collector.Limit(&colly.LimitRule{
 			DomainGlob:  "*",
-			RandomDelay: 200 * time.Millisecond,
+			RandomDelay: 500 * time.Millisecond, // delay maior para evitar bloqueios
 			Parallelism: 1,
 		})
 
 		collector.OnRequest(func(r *colly.Request) {
 			r.Headers.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 			r.Headers.Set("Accept-Language", "pt-PT,pt;q=0.9,en;q=0.8")
+			r.Headers.Set("Referer", "https://www.google.com/")
+			r.Headers.Set("DNT", "1")
+			r.Headers.Set("Connection", "keep-alive")
+			r.Headers.Set("Upgrade-Insecure-Requests", "1")
 		})
 
 		collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
 			totalLinks++
 			link := e.Attr("href")
 
-			// ============================================
-			// 1. Só aceitar PDFs
-			// ============================================
-			if !strings.Contains(strings.ToLower(link), ".pdf") {
+			// Aceitar PDFs de várias formas
+			isPDF := strings.Contains(strings.ToLower(link), ".pdf") ||
+				strings.Contains(strings.ToLower(link), "baixar") ||
+				strings.Contains(strings.ToLower(link), "download") ||
+				strings.Contains(strings.ToLower(link), "/pdf/")
+
+			if !isPDF {
 				return
 			}
 
-			// ============================================
-			// 2. URL absoluta
-			// ============================================
 			if !strings.HasPrefix(link, "http") {
 				link = e.Request.AbsoluteURL(link)
 			}
 
-			// ============================================
-			// 3. LIMPAR caracteres invisíveis (Unicode Private Use)
-			// ============================================
-			link = strings.Map(func(r rune) rune {
-				// \uE000-\uF8FF são caracteres privados (espaços invisíveis do TS)
-				if r >= 0xE000 && r <= 0xF8FF {
-					return -1
-				}
-				// \uFFFD é o caracter de substituição (encoding quebrado)
-				if r == 0xFFFD {
-					return -1
-				}
-				return r
-			}, link)
-
-			// ============================================
-			// 4. NORMALIZAR: forçar HTTPS + www
-			// ============================================
+			// Normalizar
 			link = strings.Replace(link, "http://", "https://", 1)
-			link = strings.Replace(link, "https://ts.gov.mz", "https://www.ts.gov.mz", 1)
 
-			// ============================================
-			// 5. Evitar duplicados
-			// ============================================
 			mu.Lock()
 			if linksEnviados[link] {
 				mu.Unlock()
@@ -362,11 +342,21 @@ func coletarLinks(ctx context.Context, urlsChan chan<- string) {
 		})
 
 		collector.OnError(func(r *colly.Response, err error) {
-			log.Printf("   ⚠️  [%s] Erro em %s: %v", fonte.Nome, r.Request.URL, err)
+			log.Printf("   ⚠️  [%s] Erro: %v", fonte.Nome, err)
 		})
 
 		collector.OnScraped(func(r *colly.Response) {
 			log.Printf("   📊 [%s] %d links, %d PDFs", fonte.Nome, totalLinks, totalPDFs)
+		})
+
+		// Ignorar TLS inválido (Imprensa Nacional)
+		collector.SetClient(&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+			Timeout: 45 * time.Second,
 		})
 
 		if err := collector.Visit(fonte.URL); err != nil {
@@ -383,7 +373,6 @@ func coletarLinks(ctx context.Context, urlsChan chan<- string) {
 // ============================================
 
 func extrairTextoPDF(dados []byte) (texto string, err error) {
-	// 🛡️ RECOVER: se a lib pdf entrar em panic, devolvemos erro em vez de crashar
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic ao ler PDF: %v", r)
@@ -400,7 +389,6 @@ func extrairTextoPDF(dados []byte) (texto string, err error) {
 	numPages := reader.NumPage()
 
 	for i := 1; i <= numPages; i++ {
-		// 🛡️ Proteger cada página individualmente
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -473,4 +461,19 @@ func SalvarArtigos(artigos []domain.Artigo, caminho string) error {
 		return err
 	}
 	return os.WriteFile(caminho, data, 0644)
+}
+
+// ============================================
+// FUNÇÕES PÚBLICAS (para processamento manual)
+// ============================================
+
+func ExtrairTextoPDFPublico(dados []byte) (string, error) {
+	return extrairTextoPDF(dados)
+}
+
+func ExtrairArtigosPublico(texto string, fonte string) ([]domain.Artigo, error) {
+	if regexExtractor == nil {
+		InitRegexExtractor()
+	}
+	return regexExtractor.ExtrairArtigos(texto, fonte)
 }

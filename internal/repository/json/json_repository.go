@@ -237,3 +237,61 @@ func (r *JSONRepository) Revogar(id string, motivo string) error {
 	}
 	return nil
 }
+
+// ============================================
+// BUSCAR FULL-TEXT (fallback JSON)
+// ============================================
+
+func (r *JSONRepository) BuscarFullText(query string, limite int) ([]domain.Artigo, error) {
+	if limite <= 0 {
+		limite = 50
+	}
+
+	artigos, err := r.Carregar()
+	if err != nil {
+		return nil, err
+	}
+
+	palavras := strings.Fields(strings.ToLower(query))
+
+	var resultados []domain.Artigo
+	for _, a := range artigos {
+		texto := strings.ToLower(
+			a.Texto + " " +
+				a.Lei + " " +
+				a.Artigo + " " +
+				a.Categoria + " " +
+				a.Subcategoria + " " +
+				strings.Join(a.PalavrasChave, " "),
+		)
+
+		match := false
+		for _, p := range palavras {
+			if len(p) >= 3 && strings.Contains(texto, p) {
+				match = true
+				break
+			}
+		}
+
+		if match {
+			resultados = append(resultados, a)
+			if len(resultados) >= limite {
+				break
+			}
+		}
+	}
+
+	return resultados, nil
+}
+
+// ============================================
+// CONTAR (fallback JSON)
+// ============================================
+
+func (r *JSONRepository) Contar() (int, error) {
+	artigos, err := r.Carregar()
+	if err != nil {
+		return 0, err
+	}
+	return len(artigos), nil
+}

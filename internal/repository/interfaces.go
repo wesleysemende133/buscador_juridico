@@ -5,12 +5,15 @@ import "github.com/wesleysemende133/buscador-juridico/internal/domain"
 type Repository interface {
 	Carregar() ([]domain.Artigo, error)
 	Salvar([]domain.Artigo) error
+	ListarTodos() ([]domain.Artigo, error)
 }
 
 type Buscador interface {
 	BuscarPorID(id string) (*domain.Artigo, error)
 	ListarTodos() ([]domain.Artigo, error)
 	BuscarPorTexto(query string) ([]domain.Artigo, error)
+	BuscarFullText(query string, limite int) ([]domain.Artigo, error)
+	Contar() (int, error)
 }
 
 type Editor interface {

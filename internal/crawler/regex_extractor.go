@@ -53,6 +53,10 @@ func NewRegexExtractor() *RegexExtractor {
 			regexp.MustCompile(`(?:^|\n)\s*ART\.?\s*(\d+)\s*[º°\.]?\s*`),
 			// Padrão 7: "Art. 1.º" (ordinal)
 			regexp.MustCompile(`(?i)(?:^|\n)\s*art(?:igo)?\.?\s*(\d+)\s*\.\s*[º°]\s*`),
+			// Padrão 8: "ARTIGO 1\n(Título)" (OCR — tudo maiúsculo + nova linha)
+			regexp.MustCompile(`(?:^|\n)\s*ARTIGO\s+(\d+)\s*\n`),
+			// Padrão 9: "ARTIGO LL" (OCR — números romanos mal lidos)
+			regexp.MustCompile(`(?:^|\n)\s*ARTIGO\s+([IVXLCDM]+)\s*\n`),
 		},
 
 		// ============================================

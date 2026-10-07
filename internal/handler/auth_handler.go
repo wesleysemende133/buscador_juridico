@@ -3,7 +3,9 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/wesleysemende133/buscador-juridico/internal/auth"
 )
@@ -36,6 +38,10 @@ func (h *AuthHandler) RegistarHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input registoInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			respErro(w, http.StatusRequestEntityTooLarge, "body demasiado grande (máx 1MB)")
+			return
+		}
 		respErro(w, http.StatusBadRequest, "JSON inválido")
 		return
 	}
@@ -78,6 +84,10 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input loginInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			respErro(w, http.StatusRequestEntityTooLarge, "body demasiado grande (máx 1MB)")
+			return
+		}
 		respErro(w, http.StatusBadRequest, "JSON inválido")
 		return
 	}
@@ -125,4 +135,15 @@ func respJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func respErro(w http.ResponseWriter, status int, msg string) {
 	respJSON(w, status, map[string]string{"erro": msg})
+}
+// ============================================
+// ERRO INTERNO — log detalhado, mensagem genérica
+// ============================================
+func respErroInterno(w http.ResponseWriter, err error) {
+	// Log detalhado no servidor (para debugging)
+	log.Printf("❌ Erro interno: %v", err)
+
+	// Mensagem genérica para o cliente (não revela detalhes)
+	respErro(w, http.StatusInternalServerError,
+		"erro interno ao processar o pedido. Tenta novamente mais tarde.")
 }

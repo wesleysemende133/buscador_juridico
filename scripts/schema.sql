@@ -1,7 +1,11 @@
 -- ============================================
 -- SCHEMA DO BUSCADOR JURÍDICO
+-- Última actualização: 2026-09-30
 -- ============================================
 
+-- ============================================
+-- ARTIGOS
+-- ============================================
 CREATE TABLE IF NOT EXISTS artigos (
     id TEXT PRIMARY KEY,
     lei TEXT NOT NULL,
@@ -36,6 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_artigos_texto_fts ON artigos
 CREATE INDEX IF NOT EXISTS idx_artigos_lei_fts ON artigos 
     USING GIN(to_tsvector('portuguese', lei));
 
+-- ============================================
+-- HISTÓRICO DE ARTIGOS (auditoria jurídica)
+-- ============================================
 CREATE TABLE IF NOT EXISTS historico_artigos (
     id SERIAL PRIMARY KEY,
     artigo_id TEXT REFERENCES artigos(id) ON DELETE CASCADE,
@@ -49,27 +56,61 @@ CREATE TABLE IF NOT EXISTS historico_artigos (
 
 CREATE INDEX IF NOT EXISTS idx_historico_artigo_id ON historico_artigos(artigo_id);
 
-CREATE TABLE IF NOT EXISTS usuarios (
+-- ============================================
+-- UTILIZADORES
+-- ============================================
+CREATE TABLE IF NOT EXISTS utilizadores (
     id SERIAL PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    senha_hash TEXT NOT NULL,
-    nome TEXT,
-    tipo TEXT DEFAULT 'cidadao',
-    ativo BOOLEAN DEFAULT TRUE,
-    criado_em TIMESTAMP DEFAULT NOW(),
-    ultimo_login TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS pesquisas (
-    id SERIAL PRIMARY KEY,
-    query TEXT NOT NULL,
-    categoria TEXT,
-    resultados INTEGER,
-    usuario_id INTEGER REFERENCES usuarios(id),
-    ip TEXT,
+    nome VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    senha_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    oauth_provider VARCHAR(20),
+    oauth_sub VARCHAR(255),
     criado_em TIMESTAMP DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_utilizadores_email ON utilizadores(email);
+CREATE INDEX IF NOT EXISTS idx_utilizadores_oauth ON utilizadores(oauth_provider, oauth_sub);
+
+-- ============================================
+-- USO DO AGENTE IA
+-- ============================================
+CREATE TABLE IF NOT EXISTS uso_agente (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES utilizadores(id) ON DELETE CASCADE,
+    email VARCHAR(150) NOT NULL,
+    modo VARCHAR(20) DEFAULT 'cidadao',
+    contagem INT DEFAULT 0,
+    plano VARCHAR(20) DEFAULT 'gratuito',
+    primeira_uso TIMESTAMP DEFAULT NOW(),
+    ultimo_uso TIMESTAMP DEFAULT NOW(),
+    UNIQUE(email, modo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_uso_email ON uso_agente(email);
+
+-- ============================================
+-- SOLICITAÇÕES DE ADVOGADO
+-- ============================================
+CREATE TABLE IF NOT EXISTS solicitacoes_advogado (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    telefone VARCHAR(50),
+    area_direito VARCHAR(100),
+    descricao TEXT NOT NULL,
+    urgencia VARCHAR(20) DEFAULT 'media',
+    status VARCHAR(20) DEFAULT 'pendente',
+    criado_em TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_solicitacoes_email ON solicitacoes_advogado(email);
+CREATE INDEX IF NOT EXISTS idx_solicitacoes_status ON solicitacoes_advogado(status);
+
+-- ============================================
+-- VIEW DE ESTATÍSTICAS
+-- ============================================
 CREATE OR REPLACE VIEW vw_estatisticas AS
 SELECT
     COUNT(*) as total_artigos,
@@ -78,4 +119,7 @@ SELECT
     COUNT(CASE WHEN status = 'Vigente' THEN 1 END) as vigentes
 FROM artigos;
 
+-- ============================================
+-- FIM
+-- ============================================
 SELECT 'Schema criado com sucesso!' as mensagem;

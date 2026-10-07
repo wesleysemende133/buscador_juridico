@@ -1,3 +1,43 @@
+# === Variáveis de ambiente ===
 .env
-main.go.backup*
+.env.*
+!.env.example
+
+# === Binários ===
+bin/
 servidor
+buscador-juridico
+*.exe
+*.out
+
+# === Backups ===
+.backups/
+*.backup
+*.backup-*
+*.bak
+*.old
+
+# === Dados locais ===
+data/pdfs/
+data/ocr/
+data/ocr-teste/
+data/*.json
+!data/.gitkeep
+
+# === Logs ===
+*.log
+logs/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Go ===
+*.test
+coverage.out
