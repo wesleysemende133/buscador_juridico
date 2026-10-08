@@ -102,7 +102,38 @@ func (s *AgenteService) ProcessarComStream(
 	}
 
 	// ============================================
-	// 4. BUSCA FTS
+	// 4. RACIOCÍNIO COM IA (classificar intenção)
+	// ============================================
+	callback(EventoStream{
+		Tipo:      "progresso",
+		Dados:     map[string]string{"mensagem": "🧠 A analisar a tua mensagem..."},
+		Timestamp: time.Now(),
+	})
+
+	intencao, errRac := s.AnalisarIntencao(ctx, req.Pergunta, req.Historico)
+
+	// Se for resposta directa (saudação, anúncio, fora do escopo, etc.)
+	if errRac == nil && intencao != nil && ehRespostaDirecta(intencao.Tipo) {
+		resposta := intencao.RespostaDirecta
+		if resposta == "" {
+			resposta = gerarRespostaDirecta(intencao)
+		}
+
+		callback(EventoStream{
+			Tipo: "fim",
+			Dados: map[string]interface{}{
+				"resposta":            resposta,
+				"artigos":             []interface{}{},
+				"total_artigos":       0,
+				"perguntas_restantes": -1,
+			},
+			Timestamp: time.Now(),
+		})
+		return nil
+	}
+
+	// ============================================
+	// 5. BUSCA FTS
 	// ============================================
 	callback(EventoStream{
 		Tipo:      "progresso",
@@ -112,50 +143,20 @@ func (s *AgenteService) ProcessarComStream(
 
 	inicioBusca := time.Now()
 
-	// ============================================
-	// BUSCA COM HISTÓRICO
-	// Se a pergunta actual é genérica, usar o histórico
-	// ============================================
-	palavras := extrairPalavrasChave(req.Pergunta)
-	queryBusca := strings.Join(palavras, " ")
-
-
-
-	// Se a pergunta é genérica ("aprofunda", "continua", "resume", etc.)
-	// OU se tem poucas palavras-chave, complementar com o histórico
-	if (len(palavras) < 2 || ehPerguntaGenerica(req.Pergunta)) && len(req.Historico) > 0 {
-		log.Printf("🔍 Pergunta genérica detectada — a usar histórico para busca")
-
-		// Extrair keywords das perguntas do utilizador no histórico
-		var keywordsHist []string
-		for _, m := range req.Historico {
-			if m.Role == "user" {
-				kw := extrairPalavrasChave(m.Texto)
-				keywordsHist = append(keywordsHist, kw...)
-			}
-		}
-
-		// Deduplicar
-		vistos := make(map[string]bool)
-		var unicas []string
-		for _, k := range keywordsHist {
-			if !vistos[k] {
-				vistos[k] = true
-				unicas = append(unicas, k)
-			}
-		}
-
-		if len(unicas) > 0 {
-			// ⭐ Usar APENAS as keywords do histórico (as da pergunta actual
-			// são genéricas e só atrapalham o FTS)
-			queryBusca = strings.Join(unicas, " ")
-			log.Printf("🔍 Query combinada (só histórico): %s", queryBusca)
-		}
+	queryBusca := ""
+	if intencao != nil && intencao.QueryBusca != "" {
+		queryBusca = intencao.QueryBusca
 	}
 
 	if queryBusca == "" {
-		queryBusca = req.Pergunta
+		palavras := extrairPalavrasChave(req.Pergunta)
+		queryBusca = strings.Join(palavras, " ")
+		if queryBusca == "" {
+			queryBusca = req.Pergunta
+		}
 	}
+
+	log.Printf("🔍 Query final: %s", queryBusca)
 
 	candidatos, err := s.buscador.BuscarFullText(queryBusca, 50)
 	if err != nil || len(candidatos) == 0 {
@@ -174,10 +175,42 @@ func (s *AgenteService) ProcessarComStream(
 	log.Printf("🔍 FTS: %d candidatos em %v", len(candidatos), duracaoBusca)
 
 	if len(candidatos) == 0 {
+		// ============================================
+		// FALLBACK: Cultura Geral Jurídica
+		// ============================================
 		callback(EventoStream{
-			Tipo: "progresso",
-			Dados: map[string]string{
-				"mensagem": "😕 Nenhum artigo relevante encontrado",
+			Tipo:      "progresso",
+			Dados:     map[string]string{"mensagem": "🎓 A responder com conhecimento geral..."},
+			Timestamp: time.Now(),
+		})
+
+		fallback, errFb := s.ResponderComCulturaGeral(ctx, req.Pergunta, req.Modo, req.Historico)
+		if errFb != nil {
+			log.Printf("⚠️  Fallback falhou: %v", errFb)
+			callback(EventoStream{
+				Tipo: "progresso",
+				Dados: map[string]string{
+					"mensagem": "😕 Nenhum artigo relevante encontrado",
+				},
+				Timestamp: time.Now(),
+			})
+			return nil
+		}
+
+		// Registar uso
+		if s.limites != nil {
+			_ = s.limites.RegistarUso(req.Email, req.Modo)
+		}
+
+		callback(EventoStream{
+			Tipo: "fim",
+			Dados: map[string]interface{}{
+				"resposta":            fallback.Resposta + fallback.AvisoLegal,
+				"artigos":             []interface{}{},
+				"total_artigos":       0,
+				"perguntas_restantes": -1,
+				"fonte":               "conhecimento_geral",
+				"tipo_fallback":       string(fallback.Tipo),
 			},
 			Timestamp: time.Now(),
 		})
@@ -194,7 +227,7 @@ func (s *AgenteService) ProcessarComStream(
 	})
 
 	// ============================================
-	// 5. RANKING
+	// 6. RANKING
 	// ============================================
 	callback(EventoStream{
 		Tipo:      "progresso",
@@ -210,7 +243,7 @@ func (s *AgenteService) ProcessarComStream(
 	}
 
 	// ============================================
-	// 6. GEMINI STREAMING
+	// 7. GEMINI
 	// ============================================
 	callback(EventoStream{
 		Tipo:      "progresso",
@@ -219,7 +252,6 @@ func (s *AgenteService) ProcessarComStream(
 	})
 
 	if s.apiKey == "" {
-		// Sem API key: devolver artigos apenas
 		callback(EventoStream{
 			Tipo: "fim",
 			Dados: map[string]interface{}{
@@ -233,11 +265,9 @@ func (s *AgenteService) ProcessarComStream(
 		return nil
 	}
 
-	// Chamar Gemini com streaming de tokens
 	resposta, err := s.gerarRespostaStream(ctx, req.Pergunta, req.Modo, totalArtigos, candidatos, artigosRelevantes, req.Historico, callback)
 	if err != nil {
 		log.Printf("⚠️  Erro Gemini: %v", err)
-		// Fallback
 		callback(EventoStream{
 			Tipo: "fim",
 			Dados: map[string]interface{}{
@@ -252,7 +282,7 @@ func (s *AgenteService) ProcessarComStream(
 	}
 
 	// ============================================
-	// 7. REGISTAR USO
+	// 8. REGISTAR USO
 	// ============================================
 	if s.limites != nil {
 		_ = s.limites.RegistarUso(req.Email, req.Modo)
@@ -272,7 +302,7 @@ func (s *AgenteService) ProcessarComStream(
 	}
 
 	// ============================================
-	// 8. EVENTO FINAL
+	// 9. EVENTO FINAL
 	// ============================================
 	callback(EventoStream{
 		Tipo: "fim",
@@ -287,6 +317,7 @@ func (s *AgenteService) ProcessarComStream(
 
 	return nil
 }
+
 
 // gerarRespostaStream chama o Gemini e envia tokens em tempo real
 func (s *AgenteService) gerarRespostaStream(
@@ -393,3 +424,5 @@ func ehPerguntaGenerica(pergunta string) bool {
 
 	return false
 }
+
+

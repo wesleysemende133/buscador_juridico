@@ -329,6 +329,18 @@ func extrairPalavrasChave(pergunta string) []string {
 		"eu": true, "tu": true, "ele": true, "ela": true, "nós": true,
 		"me": true, "te": true, "lhe": true, "vos": true,
 		"diz": true, "lei": true, "leis": true,
+		"podes": true, "pode": true, "podias": true,
+		"detalhar": true, "detalha": true, "detalhes": true,
+		"explicar": true, "explica": true,
+		"falar": true, "fala": true,
+		"querer": true, "quero": true, "queres": true,
+		"consegues": true, "consegue": true,
+		"gostaria": true, "gostava": true,
+		"saber": true, "sei": true, "sabe": true,
+		"fazer": true, "faz": true, "feito": true,
+		"mais": true, "melhor": true, "menos": true,
+		"muito": true, "pouco": true,
+		"obrigado": true, "obrigada": true, "por favor": true,
 	}
 
 	pergunta = strings.ToLower(pergunta)
