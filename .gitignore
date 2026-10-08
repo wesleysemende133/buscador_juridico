@@ -15,7 +15,9 @@ buscador-juridico
 *.backup
 *.backup-*
 *.bak
+*.bak-*
 *.old
+*.old-*
 
 # === Dados locais ===
 data/pdfs/

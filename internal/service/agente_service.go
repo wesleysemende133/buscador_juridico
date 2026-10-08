@@ -40,9 +40,17 @@ func NewAgenteService(
 // ============================================
 
 type AgenteRequest struct {
-	Pergunta string `json:"pergunta"`
-	Modo     string `json:"modo"`
-	Email    string `json:"email"`
+	Pergunta  string         `json:"pergunta"`
+	Modo      string         `json:"modo"`
+	Email     string         `json:"email"`
+	Historico []MensagemChat `json:"historico,omitempty"`
+}
+
+// MensagemChat representa uma mensagem anterior na conversa
+type MensagemChat struct {
+	Role    string   `json:"role"`              // "user" ou "assistant"
+	Texto   string   `json:"texto"`
+	Artigos []string `json:"artigos,omitempty"` // IDs dos artigos citados
 }
 
 type AgenteResponse struct {
@@ -432,6 +440,7 @@ func (s *AgenteService) construirPrompt(
 	totalArtigos int,
 	candidatos []domain.Artigo,
 	artigosRelevantes []domain.Artigo,
+	historico []MensagemChat,
 ) string {
 	var stats strings.Builder
 	stats.WriteString(fmt.Sprintf("Total de artigos na base de dados: %d\n", totalArtigos))
@@ -455,16 +464,34 @@ TOM E ESTILO:
 - Profissional, mas acessível. Trata por "você".
 - Usa terminologia jurídica adequada.
 - Cita sempre os artigos específicos.
-- NUNCA inventes artigos ou factos.`
+- NUNCA inventes artigos ou factos.
+- Se houver histórico, mantém a continuidade da conversa.`
 	} else {
 		instrucoes = `És o Assistente Jurídico do Base Legal. Ajudas cidadãos comuns.
 
 TOM E ESTILO:
 - Amigável, caloroso. Trata por "você".
-- Começa com "Boa pergunta! Deixa-me explicar de forma simples."
+- Se for a PRIMEIRA mensagem (sem histórico), começa com "Boa pergunta! Deixa-me explicar de forma simples."
+- Se HOUVER histórico, NÃO repitas a saudação — continua naturalmente a conversa.
 - Linguagem do dia-a-dia.
 - Cita os artigos naturalmente.
-- Máximo 250 palavras.`
+- Máximo 250 palavras por resposta.`
+	}
+
+	// ============================================
+	// HISTÓRICO DA CONVERSA
+	// ============================================
+	var hist strings.Builder
+	if len(historico) > 0 {
+		hist.WriteString("\n\nHISTÓRICO DA CONVERSA (usa para contexto, NÃO repitas):\n\n")
+		for _, m := range historico {
+			role := "Utilizador"
+			if m.Role == "assistant" {
+				role = "Assistente"
+			}
+			hist.WriteString(fmt.Sprintf("%s: %s\n\n", role, m.Texto))
+		}
+		hist.WriteString("\n(Continua a conversa a partir daqui. Se o utilizador pedir para aprofundar, correlacionar ou resumir, refere-te ao que já foi discutido.)\n")
 	}
 
 	return fmt.Sprintf(`%s
@@ -473,10 +500,11 @@ CONTEXTO DA BASE DE DADOS:
 %s
 
 %s
+%s
 
-PERGUNTA: %s
+PERGUNTA ACTUAL: %s
 
 Responde de forma fundamentada.`,
-		instrucoes, stats.String(), contexto.String(), pergunta,
+		instrucoes, stats.String(), contexto.String(), hist.String(), pergunta,
 	)
 }

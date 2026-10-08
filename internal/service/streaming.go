@@ -112,8 +112,47 @@ func (s *AgenteService) ProcessarComStream(
 
 	inicioBusca := time.Now()
 
+	// ============================================
+	// BUSCA COM HISTÓRICO
+	// Se a pergunta actual é genérica, usar o histórico
+	// ============================================
 	palavras := extrairPalavrasChave(req.Pergunta)
 	queryBusca := strings.Join(palavras, " ")
+
+
+
+	// Se a pergunta é genérica ("aprofunda", "continua", "resume", etc.)
+	// OU se tem poucas palavras-chave, complementar com o histórico
+	if (len(palavras) < 2 || ehPerguntaGenerica(req.Pergunta)) && len(req.Historico) > 0 {
+		log.Printf("🔍 Pergunta genérica detectada — a usar histórico para busca")
+
+		// Extrair keywords das perguntas do utilizador no histórico
+		var keywordsHist []string
+		for _, m := range req.Historico {
+			if m.Role == "user" {
+				kw := extrairPalavrasChave(m.Texto)
+				keywordsHist = append(keywordsHist, kw...)
+			}
+		}
+
+		// Deduplicar
+		vistos := make(map[string]bool)
+		var unicas []string
+		for _, k := range keywordsHist {
+			if !vistos[k] {
+				vistos[k] = true
+				unicas = append(unicas, k)
+			}
+		}
+
+		if len(unicas) > 0 {
+			// ⭐ Usar APENAS as keywords do histórico (as da pergunta actual
+			// são genéricas e só atrapalham o FTS)
+			queryBusca = strings.Join(unicas, " ")
+			log.Printf("🔍 Query combinada (só histórico): %s", queryBusca)
+		}
+	}
+
 	if queryBusca == "" {
 		queryBusca = req.Pergunta
 	}
@@ -195,7 +234,7 @@ func (s *AgenteService) ProcessarComStream(
 	}
 
 	// Chamar Gemini com streaming de tokens
-	resposta, err := s.gerarRespostaStream(ctx, req.Pergunta, req.Modo, totalArtigos, candidatos, artigosRelevantes, callback)
+	resposta, err := s.gerarRespostaStream(ctx, req.Pergunta, req.Modo, totalArtigos, candidatos, artigosRelevantes, req.Historico, callback)
 	if err != nil {
 		log.Printf("⚠️  Erro Gemini: %v", err)
 		// Fallback
@@ -257,11 +296,12 @@ func (s *AgenteService) gerarRespostaStream(
 	totalArtigos int,
 	candidatos []domain.Artigo,
 	artigosRelevantes []domain.Artigo,
+	historico []MensagemChat,
 	callback StreamCallback,
 ) (string, error) {
 
 	// Construir prompt (mesmo do gerarResposta)
-	prompt := s.construirPrompt(pergunta, modo, totalArtigos, candidatos, artigosRelevantes)
+	prompt := s.construirPrompt(pergunta, modo, totalArtigos, candidatos, artigosRelevantes, historico)
 
 	// Por agora, chamar o Gemini normal e simular streaming
 	// (o streaming real precisa de SSE do Gemini, que é mais complexo)
@@ -293,4 +333,63 @@ func (s *AgenteService) gerarRespostaStream(
 	}
 
 	return resposta, nil
+}
+
+
+// ehPerguntaGenerica detecta perguntas que pedem continuação/análise
+// sem conteúdo jurídico próprio
+func ehPerguntaGenerica(pergunta string) bool {
+	p := strings.ToLower(pergunta)
+
+	genericas := []string{
+		// Aprofundar
+		"aprofunda", "aprofundar", "aprofundamento",
+		"profund", "detalha", "detalhar",
+		"desenvolve", "desenvolver", "elabora", "elaborar",
+		"mais sobre", "mais detalhe", "mais detalhes",
+		"fala-me mais", "diz-me mais", "conta-me mais",
+
+		// Continuar
+		"continua", "continuar", "continue", "prossegue",
+
+		// Resumir
+		"resume", "resumo", "resumir", "sintetiza", "sintese", "sumario",
+
+		// Correlacionar
+		"correlaciona", "correlacionar", "relaciona", "relacionar",
+		"liga", "ligar", "conecta", "conectar",
+
+		// Explicar de novo
+		"explica melhor", "explica mais", "explica novamente", "explica de novo",
+
+		// Pedir análise
+		"analisa", "analisar", "analise", "análise",
+		"estuda", "estudar", "estudo",
+		"avalia", "avaliar", "avaliação",
+		"interpreta", "interpretar", "interpretação",
+
+		// Exemplos
+		"exemplo", "exemplos", "exemplifica", "ilustra", "caso pratico",
+
+		// Referência ao anterior
+		"isso", "aquilo", "aquele", "aquela", "estes", "estas",
+		"o assunto", "esse tema", "esse assunto", "este tema",
+		"do que falaste", "do que disseste", "que mencionaste",
+		"que citaste", "que referiste",
+
+		// Conectores
+		"e sobre", "e quanto a", "e em relacao",
+		"agora", "entao", "portanto",
+
+		// Verbos genéricos
+		"fazer", "faz", "feito", "podes", "podias", "consegues",
+	}
+
+	for _, g := range genericas {
+		if strings.Contains(p, g) {
+			return true
+		}
+	}
+
+	return false
 }

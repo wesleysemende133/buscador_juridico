@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/wesleysemende133/buscador-juridico/internal/auth"
@@ -44,8 +45,9 @@ func (h *AgenteHandler) ProcessarHandler(w http.ResponseWriter, r *http.Request)
 	// LER BODY
 	// ============================================
 	var body struct {
-		Pergunta string `json:"pergunta"`
-		Modo     string `json:"modo"`
+		Pergunta  string                 `json:"pergunta"`
+		Modo      string                 `json:"modo"`
+		Historico []service.MensagemChat `json:"historico,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -86,9 +88,10 @@ func (h *AgenteHandler) ProcessarHandler(w http.ResponseWriter, r *http.Request)
 	// FALLBACK: sem worker pool
 	// ============================================
 	req := service.AgenteRequest{
-		Pergunta: body.Pergunta,
-		Modo:     body.Modo,
-		Email:    email,
+		Pergunta:  body.Pergunta,
+		Modo:      body.Modo,
+		Email:     email,
+		Historico: body.Historico,
 	}
 
 	resposta, err := h.agenteService.Processar(r.Context(), req)
@@ -152,8 +155,9 @@ func (h *AgenteHandler) ProcessarStreamHandler(w http.ResponseWriter, r *http.Re
 
 	// Ler body
 	var body struct {
-		Pergunta string `json:"pergunta"`
-		Modo     string `json:"modo"`
+		Pergunta  string                  `json:"pergunta"`
+		Modo      string                  `json:"modo"`
+		Historico []service.MensagemChat  `json:"historico,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -164,6 +168,7 @@ func (h *AgenteHandler) ProcessarStreamHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+
 	// Callback que envia eventos SSE
 	callback := func(evento service.EventoStream) {
 		enviarSSE(w, flusher, evento)
@@ -171,9 +176,10 @@ func (h *AgenteHandler) ProcessarStreamHandler(w http.ResponseWriter, r *http.Re
 
 	// Processar
 	req := service.AgenteRequest{
-		Pergunta: body.Pergunta,
-		Modo:     body.Modo,
-		Email:    email,
+		Pergunta:  body.Pergunta,
+		Modo:      body.Modo,
+		Email:     email,
+		Historico: body.Historico,
 	}
 
 	if err := h.agenteService.ProcessarComStream(r.Context(), req, callback); err != nil {
