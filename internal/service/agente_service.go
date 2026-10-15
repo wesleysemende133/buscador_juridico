@@ -328,7 +328,7 @@ func extrairPalavrasChave(pergunta string) []string {
 		"este": true, "esta": true, "esse": true, "essa": true, "isso": true,
 		"eu": true, "tu": true, "ele": true, "ela": true, "nós": true,
 		"me": true, "te": true, "lhe": true, "vos": true,
-		"diz": true, "lei": true, "leis": true,
+		"lei": true, "leis": true,
 		"podes": true, "pode": true, "podias": true,
 		"detalhar": true, "detalha": true, "detalhes": true,
 		"explicar": true, "explica": true,
@@ -340,7 +340,10 @@ func extrairPalavrasChave(pergunta string) []string {
 		"fazer": true, "faz": true, "feito": true,
 		"mais": true, "melhor": true, "menos": true,
 		"muito": true, "pouco": true,
-		"obrigado": true, "obrigada": true, "por favor": true,
+		"obrigado": true, "obrigada": true,
+		"diz": true, "dizer": true, "diga": true,
+		"artigo": true, "art": true, "artigos": true,
+		"numero": true, "número": true, "nº": true,
 	}
 
 	pergunta = strings.ToLower(pergunta)
@@ -353,6 +356,11 @@ func extrairPalavrasChave(pergunta string) []string {
 
 	var resultado []string
 	for _, p := range palavras {
+		// ⭐ Permitir números (ex: "269", "39", "13/2023")
+		if isNumero(p) {
+			resultado = append(resultado, p)
+			continue
+		}
 		if len(p) < 4 {
 			continue
 		}
@@ -429,6 +437,8 @@ TOM E ESTILO:
 - Máximo 250 palavras.`
 	}
 
+	contextoTemporal := ContextoTemporal()
+
 	prompt := fmt.Sprintf(`%s
 
 CONTEXTO DA BASE DE DADOS:
@@ -439,7 +449,7 @@ CONTEXTO DA BASE DE DADOS:
 PERGUNTA: %s
 
 Responde de forma fundamentada. NÃO repitas os artigos no fim — eles são mostrados automaticamente.`,
-		instrucoes, stats.String(), contexto.String(), pergunta,
+		instrucoes, contextoTemporal, stats.String(), contexto.String(), pergunta,
 	)
 
 	return ChamarGemini(ctx, s.apiKey, prompt)
@@ -454,6 +464,11 @@ func (s *AgenteService) construirPrompt(
 	artigosRelevantes []domain.Artigo,
 	historico []MensagemChat,
 ) string {
+	// ============================================
+	// CONTEXTO TEMPORAL
+	// ============================================
+	contextoTemporal := ContextoTemporal()
+
 	var stats strings.Builder
 	stats.WriteString(fmt.Sprintf("Total de artigos na base de dados: %d\n", totalArtigos))
 	stats.WriteString(fmt.Sprintf("Artigos analisados nesta busca: %d\n", len(candidatos)))
@@ -517,6 +532,20 @@ CONTEXTO DA BASE DE DADOS:
 PERGUNTA ACTUAL: %s
 
 Responde de forma fundamentada.`,
-		instrucoes, stats.String(), contexto.String(), hist.String(), pergunta,
+		instrucoes, contextoTemporal, stats.String(), contexto.String(), hist.String(), pergunta,
 	)
+}
+
+
+// isNumero verifica se a string é um número (ex: "269", "39", "13/2023")
+func isNumero(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && c != '/' && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
 }

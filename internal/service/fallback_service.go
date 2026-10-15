@@ -65,7 +65,11 @@ func (s *AgenteService) ResponderComCulturaGeral(
 		tom = `TOM: Acessível mas profissional. Explica termos técnicos.`
 	}
 
+	contextoTemporal := ContextoTemporal()
+
 	prompt := fmt.Sprintf(`És o Assistente Jurídico do Base Legal, especializado em Direito moçambicano.
+
+%s
 
 %sO utilizador colocou uma questão jurídica. A nossa base de dados interna NÃO contém o diploma específico mencionado.
 
@@ -128,7 +132,7 @@ FORMATO (APENAS JSON):
   "resposta": "resposta em markdown"
 }
 
-Responde APENAS o JSON:`, tom, hist.String(), pergunta)
+Responde APENAS o JSON:`, tom, contextoTemporal, hist.String(), pergunta)
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

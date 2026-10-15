@@ -146,7 +146,8 @@ func ehRespostaDirecta(tipo string) bool {
 func gerarRespostaDirecta(intencao *Intencao) string {
 	switch intencao.Tipo {
 	case "saudacao":
-		return "Olá! 👋 Sou o Assistente Jurídico do Base Legal.\n\nEstou aqui para ajudar com questões sobre a **legislação moçambicana**. Podes perguntar-me sobre:\n\n- **Direitos laborais** (trabalho, contratos, férias)\n- **Direitos da família** (casamento, divórcio, maternidade)\n- **Constituição** e direitos fundamentais\n- **Processos judiciais**\n\nO que gostarias de saber?"
+		saudacao := SaudacaoApropriada()
+		return saudacao + "! 👋 Sou o Assistente Jurídico do Base Legal.\n\nEstou aqui para ajudar com questões sobre a **legislação moçambicana**. Podes perguntar-me sobre:\n\n- **Direitos laborais** (trabalho, contratos, férias)\n- **Direitos da família** (casamento, divórcio, maternidade)\n- **Constituição** e direitos fundamentais\n- **Processos judiciais**\n\nO que gostarias de saber?"
 
 	case "anuncio":
 		return "Claro! Estou aqui para ajudar. 😊\n\nColoca a tua pergunta sobre **legislação moçambicana**. Por exemplo:\n\n- *O que diz a lei sobre o trabalho?*\n- *Direitos da maternidade*\n- *O que diz o artigo 11?*\n\nDiz-me o que precisas!"
